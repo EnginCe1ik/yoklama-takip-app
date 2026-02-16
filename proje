@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yoklama Kare v9.1</title>
+    
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+
+    <style>
+        :root {
+            --bg: #f0f2f5;
+            --primary: #341f97;
+            --danger: #ff6b6b;
+            --warning: #feca57;
+            --success: #1dd1a1;
+            --text: #222f3e;
+            --card-bg: #ffffff;
+            --radius: 12px;
+        }
+
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent; }
+
+        body { background-color: var(--bg); color: var(--text); margin: 0; padding: 15px; padding-bottom: 140px; }
+        
+        h2 { text-align: center; color: var(--primary); margin-bottom: 10px; font-weight: 800; font-size: 1.4rem; }
+
+        /* LOADING & MODAL */
+        #loadingOverlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(255,255,255,0.95); z-index: 3000; flex-direction: column; align-items: center; justify-content: center; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #ddd; border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s infinite linear; margin-bottom: 10px; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        #previewModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 2500; align-items: center; justify-content: center; }
+        .modal-content { background: white; width: 90%; max-width: 400px; max-height: 80%; border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; }
+        .modal-body { overflow-y: auto; flex: 1; margin: 15px 0; }
+        .preview-item { display: flex; gap: 5px; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+        .preview-item input { flex:1; padding: 8px; border: 1px solid #ccc; border-radius: 6px; }
+        .modal-footer button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; margin-top: 5px; cursor: pointer; }
+        .btn-confirm { background: var(--success); color: white; } .btn-cancel { background: #dfe6e9; color: #636e72; }
+
+        /* ÜST PANEL */
+        .top-panel { background: var(--card-bg); padding: 15px; border-radius: var(--radius); margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); font-size: 0.9rem; }
+        .week-control { display: flex; justify-content: center; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #f1f2f6; gap: 10px; }
+        .week-inp { width: 60px; padding: 6px; text-align: center; border: 2px solid #ddd; border-radius: 6px; font-weight: bold; font-size: 1rem; }
+
+        .upload-btns { display: grid; grid-template-columns: 1fr; gap: 10px; }
+        .btn-up { background: #f7f9fa; padding: 12px; border-radius: 10px; text-align: center; position: relative; border: 1px dashed #b2bec3; cursor: pointer; font-size: 0.9rem; font-weight: bold; color: #576574; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .btn-up input { position: absolute; width:100%; height:100%; top:0; left:0; opacity:0; }
+
+        .edit-bar { display: flex; gap: 10px; margin-bottom: 15px; }
+        .btn-tool { flex: 1; padding: 8px; border-radius: 20px; border: none; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: 0.2s; }
+        #editBtn { background: #dfe4ea; color: var(--text); border: 2px solid #ced6e0; }
+        #editBtn.active { background: var(--text); color: white; border-color: var(--text); }
+        #delMultiBtn { background: var(--danger); color: white; display: none; }
+
+        /* GRID YAPISI */
+        #list { display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 10px; }
+
+        .card {
+            background: var(--card-bg); border-radius: 16px; aspect-ratio: 1 / 1; 
+            padding: 8px; display: flex; flex-direction: column; justify-content: space-between; 
+            align-items: center; position: relative; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            border: 2px solid transparent; border-top: 5px solid var(--success); overflow: hidden; transition: 0.2s;
+        }
+        .card.edit-mode { transform: scale(0.92); border-color: #ccc; }
+        .select-check { position: absolute; top: 5px; left: 5px; width: 20px; height: 20px; z-index: 10; display: none; }
+        .card.edit-mode .select-check { display: block; }
+
+        .c-header { width: 100%; text-align: center; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; }
+        .c-title { 
+            font-weight: 700; font-size: 0.85rem; line-height: 1.2; color: #2d3436;
+            max-height: 2.4em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        }
+        .c-title-input { width: 90%; font-size: 0.8rem; text-align: center; padding: 2px; }
+        .c-tag { font-size: 0.6rem; background: #f1f2f6; padding: 2px 5px; border-radius: 4px; color: #999; margin-bottom: 3px; }
+
+        .counter-area { text-align: center; margin-bottom: 5px; }
+        .big-num { font-size: 2.2rem; font-weight: 800; line-height: 0.9; color: var(--text); }
+        .lbl { font-size: 0.55rem; color: #b2bec3; font-weight: bold; text-transform: uppercase; }
+
+        .controls { display: flex; width: 100%; gap: 5px; height: 32px; }
+        .btn-act { flex: 1; border:none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .btn-dec { background: #dfe6e9; color: #2d3436; } .btn-inc { background: var(--primary); color: white; }
+
+        .st-warn { border-top-color: var(--warning); } .st-warn .big-num { color: #e1b12c; }
+        .st-err { border-top-color: var(--danger); } .st-err .big-num { color: var(--danger); }
+        .card.edit-mode .controls { pointer-events: none; opacity: 0.2; }
+
+        .fab-bar { position: fixed; bottom: 0; left: 0; width: 100%; background: white; padding: 10px; box-shadow: 0 -5px 20px rgba(0,0,0,0.1); display: flex; gap: 8px; z-index: 1000; }
+        .fab-bar input { flex:1; padding: 10px; border: 2px solid #dfe6e9; border-radius: 8px; outline: none; }
+        .fab-bar button { width: 45px; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 24px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <div id="loadingOverlay"><div class="spinner"></div><div id="loadText" style="font-weight:bold;">İşleniyor...</div></div>
+
+    <div id="previewModal">
+        <div class="modal-content">
+            <div style="font-weight:bold; margin-bottom:10px; text-align:center;">Dersler (<span id="previewCount">0</span>)</div>
+            <div class="modal-body" id="previewList"></div>
+            <div class="modal-footer">
+                <button class="btn-confirm" onclick="savePreviewToMain()">EKLE</button>
+                <button class="btn-cancel" onclick="closePreview()">İPTAL</button>
+            </div>
+        </div>
+    </div>
+
+    <h2>Kare Yoklama v9.1</h2>
+
+    <div class="top-panel">
+        <div class="week-control">
+            <span style="font-weight:bold;">Dönem Süresi:</span>
+            <input type="number" id="weeksInp" class="week-inp" value="14" onchange="updateWeeks()"> 
+            <span style="font-weight:bold;">Hafta</span>
+        </div>
+        <div class="upload-btns">
+            <div class="btn-up">
+                <span>📷</span> Fotoğraftan Ekle
+                <input type="file" accept="image/*" onchange="processImage(this)">
+            </div>
+            <div class="btn-up">
+                <span>📊</span> Excel'den Ekle
+                <input type="file" accept=".xlsx, .csv" onchange="processExcel(this)">
+            </div>
+        </div>
+    </div>
+
+    <div class="edit-bar">
+        <button id="editBtn" class="btn-tool" onclick="toggleEditMode()">✏️ Seç / Düzenle</button>
+        <button id="delMultiBtn" class="btn-tool" onclick="deleteSelected()">🗑️ Sil</button>
+    </div>
+
+    <div id="list"></div>
+
+    <div class="fab-bar">
+        <input type="text" id="manName" placeholder="Ders Adı...">
+        <button onclick="addManual()">+</button>
+    </div>
+
+    <script>
+        let courses = [];
+        let tempCourses = [];
+        let totalWeeks = 14;
+        let isEditMode = false;
+
+        window.onload = () => {
+            if(localStorage.getItem('yt_w_v91')) { totalWeeks = parseInt(localStorage.getItem('yt_w_v91')); document.getElementById('weeksInp').value = totalWeeks; }
+            if(localStorage.getItem('yt_c_v91')) { courses = JSON.parse(localStorage.getItem('yt_c_v91')); render(); }
+        };
+
+        function render() {
+            const list = document.getElementById('list');
+            list.innerHTML = '';
+            
+            courses.slice().reverse().forEach(c => {
+                const rem = c.max - c.cur;
+                const pct = (c.cur / c.max) * 100;
+                let cls = '', txt = rem;
+                if(rem <= 0) { cls='st-err'; txt='0'; } else if(rem<=2 || pct>=80) cls='st-warn';
+                if(rem < 0) txt = rem;
+
+                const tag = c.type === 'uygulama' ? 'LAB' : 'Teorik';
+                const editClass = isEditMode ? 'edit-mode' : '';
+                
+                const titleHTML = isEditMode 
+                    ? `<input class="c-title-input" value="${c.name}" oninput="updateCourseName(${c.id}, this.value)">`
+                    : `<span class="c-title">${c.name}</span>`;
+
+                list.innerHTML += `
+                <div class="card ${cls} ${editClass}">
+                    <input type="checkbox" class="select-check" value="${c.id}">
+                    <div class="c-header"><span class="c-tag">${tag}</span>${titleHTML}</div>
+                    <div class="counter-area"><div class="big-num">${txt}</div><div class="lbl">KALAN</div></div>
+                    <div class="controls"><button class="btn-act btn-dec" onclick="updateAbs(${c.id}, -1)">−</button><button class="btn-act btn-inc" onclick="updateAbs(${c.id}, 1)">+</button></div>
+                </div>`;
+            });
+        }
+
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const btn = document.getElementById('editBtn');
+            const delBtn = document.getElementById('delMultiBtn');
+            if(isEditMode) { btn.classList.add('active'); btn.innerHTML = "✅ Bitti"; delBtn.style.display = 'block'; } 
+            else { btn.classList.remove('active'); btn.innerHTML = "✏️ Seç / Düzenle"; delBtn.style.display = 'none'; }
+            render();
+        }
+
+        function updateCourseName(id, newName) { const c = courses.find(x => x.id === id); if(c) { c.name = newName; save(false); } }
+        function deleteSelected() {
+            const boxes = document.querySelectorAll('.select-check:checked');
+            if(boxes.length===0) return;
+            if(confirm(`${boxes.length} ders silinsin mi?`)) {
+                const ids = Array.from(boxes).map(b=>parseFloat(b.value));
+                courses = courses.filter(c=>!ids.includes(c.id));
+                toggleEditMode(); save();
+            }
+        }
+
+        function processImage(input) {
+            const file = input.files[0]; if(!file) return; showLoad(true);
+            Tesseract.recognize(file, 'tur', { logger: m => { if(m.status==='recognizing text') showLoad(true, `%${Math.floor(m.progress*100)}`); } })
+            .then(({ data: { text } }) => {
+                const lines = text.split('\n').map(l=>l.trim()); tempCourses=[];
+                const bl = ["akts","kredi","dönem","sınav","saat","tarih","kod","zorunlu","seçmeli","sayfa"];
+                for(let i=0; i<lines.length; i++){
+                    let l=lines[i]; if(l.length<3 || bl.some(b=>l.toLowerCase().includes(b)) || /^[\d\W]+$/.test(l)) continue;
+                    if(i+1<lines.length){ let n=lines[i+1]; if(l.length<25 && n.length>2 && !bl.some(b=>n.toLowerCase().includes(b))){ l+=" "+n; i++; } }
+                    let t = (l.toLowerCase().match(/lab|uyg/)) ? 'uygulama' : 'teorik';
+                    if(!tempCourses.some(c=>c.name===l)) tempCourses.push({name:l, type:t});
+                }
+                showLoad(false); if(tempCourses.length>0) openModal(); else alert("Bulunamadı");
+            }).catch(e=>{showLoad(false);alert("Hata");}); input.value="";
+        }
+
+        function openModal(){ document.getElementById('previewModal').style.display='flex'; document.getElementById('previewCount').innerText=tempCourses.length; const b=document.getElementById('previewList'); b.innerHTML=''; tempCourses.forEach((c,i)=>{ b.innerHTML+=`<div class="preview-item"><input id="p-n-${i}" value="${c.name}"><button class="btn-cancel" style="width:auto;padding:5px 10px;" onclick="remP(${i})">x</button></div>`; }); }
+        function remP(i){ tempCourses.splice(i,1); openModal(); }
+        function closePreview(){ document.getElementById('previewModal').style.display='none'; tempCourses=[]; }
+        function savePreviewToMain(){ document.querySelectorAll('#previewList .preview-item').forEach((d,i)=>{ const n=document.getElementById(`p-n-${i}`); if(n) addCourseObj(n.value, tempCourses[i].type); }); save(); closePreview(); }
+        
+        function addManual() { const n=document.getElementById('manName').value; if(n){ addCourseObj(n,'teorik'); save(); document.getElementById('manName').value=''; } }
+        
+        // --- GÜNCELLENEN HESAPLAMA KISMI (Math.round KULLANILDI) ---
+        function addCourseObj(n,t) { 
+            if(!courses.some(c=>c.name===n)) {
+                // Burada Math.round kullanıyoruz ki 4.5 -> 5 olsun.
+                const limit = Math.round(totalWeeks * (t==='uygulama'?0.2:0.3));
+                courses.push({id:Date.now()+Math.random(), name:n, type:t, max:limit, cur:0}); 
+            }
+        }
+        
+        function updateWeeks() { 
+            const v=document.getElementById('weeksInp').value; 
+            if(v>0){ 
+                totalWeeks=parseInt(v); 
+                localStorage.setItem('yt_w_v91',totalWeeks); 
+                courses.forEach(c => {
+                    // Hafta güncellendiğinde de Math.round ile hesapla
+                    c.max = Math.round(totalWeeks * (c.type==='uygulama'?0.2:0.3));
+                }); 
+                save(); 
+            } 
+        }
+
+        function updateAbs(id,v) { const c=courses.find(x=>x.id===id); if(v===-1 && c.cur===0)return; c.cur+=v; save(); }
+        function save(r=true) { localStorage.setItem('yt_c_v91', JSON.stringify(courses)); if(r)render(); }
+        function showLoad(s,t="İşleniyor..."){ document.getElementById('loadingOverlay').style.display=s?'flex':'none'; document.getElementById('loadText').innerText=t; }
+        function processExcel(i){const f=i.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{const j=XLSX.utils.sheet_to_json(XLSX.read(new Uint8Array(e.target.result),{type:'array'}).Sheets[XLSX.read(new Uint8Array(e.target.result),{type:'array'}).SheetNames[0]],{header:1});j.forEach(r=>{if(r[0]&&r[0].length>3&&r[0]!=='Ders Adı')addCourseObj(r[0],(String(r[0]).match(/lab|uyg/i)?'uygulama':'teorik'))});save();alert("Eklendi")};r.readAsArrayBuffer(f);i.value="";}
+    </script>
+</body>
+</html>
